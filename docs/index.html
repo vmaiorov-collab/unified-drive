@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unified Drive</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --muted:#6b6b76; --line:#e3e3ea; --accent:#2563eb; --warn:#d97706; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121216; --fg:#ececf1; --muted:#9a9aa6; --line:#2a2a33; --accent:#60a5fa; --warn:#fbbf24; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; font:16px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--fg); max-width:720px; margin-inline:auto; }
+  h1 { font-size:1.3rem; margin:0 0 16px; }
+  .bar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--accent); }
+  .bar.hot > i { background:var(--warn); }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .row { padding:12px 0; border-bottom:1px solid var(--line); }
+  .row .top { display:flex; justify-content:space-between; gap:8px; margin-bottom:6px; word-break:break-all; }
+  button { font:inherit; padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:none; color:var(--fg); cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  section { margin-bottom:24px; }
+  #err { color:var(--warn); }
+</style>
+</head>
+<body>
+<h1>Unified Drive</h1>
+<p class="muted">Личное приложение, объединяющее несколько Google-аккаунтов владельца в один виртуальный диск: общий объём, единый список файлов и поиск. <a href="privacy.html">Политика конфиденциальности</a></p>
+<p id="err"></p>
+
+<section id="login" hidden>
+  <p class="muted">Введите ключ доступа к API (хранится только в этом браузере).</p>
+  <input id="key" type="password" style="font:inherit;padding:8px;width:100%;max-width:320px">
+  <button class="primary" id="save">Войти</button>
+</section>
+
+<section id="app" hidden>
+  <div class="row">
+    <div class="top"><b>Общий диск</b><span id="poolText" class="muted"></span></div>
+    <div class="bar" id="poolBar"><i></i></div>
+  </div>
+  <div id="accounts"></div>
+  <p><button class="primary" id="add">+ Подключить аккаунт Google</button></p>
+</section>
+
+<script>
+  // Set after deploying the worker.
+  const API = "https://unified-drive.d6544559.workers.dev";
+  const $ = (id) => document.getElementById(id);
+  const gb = (n) => (n / 1024 ** 3).toFixed(1) + " ГБ";
+  const getKey = () => { try { return localStorage.getItem("ud_key"); } catch { return null; } };
+
+  async function api(path) {
+    const res = await fetch(API + path, { headers: { Authorization: "Bearer " + getKey() } });
+    if (res.status === 401) { try { localStorage.removeItem("ud_key"); } catch {} show(); throw new Error("Неверный ключ"); }
+    if (!res.ok) throw new Error((await res.json()).error || res.status);
+    return res.json();
+  }
+
+  function bar(el, used, total) {
+    const pct = total ? Math.min(100, used / total * 100) : 0;
+    el.firstElementChild.style.width = pct + "%";
+    el.classList.toggle("hot", pct >= 90);
+  }
+
+  async function load() {
+    $("err").textContent = "";
+    try {
+      const [pool, accounts] = await Promise.all([api("/pool"), api("/accounts")]);
+      $("poolText").textContent = `${gb(pool.used)} из ${gb(pool.total)}`;
+      bar($("poolBar"), pool.used, pool.total);
+      $("accounts").replaceChildren(...accounts.map((a) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = '<div class="top"><span></span><span class="muted"></span></div><div class="bar"><i></i></div>';
+        row.querySelector("span").textContent = a.email;
+        row.querySelector(".muted").textContent = `${gb(a.quota_used)} / ${gb(a.quota_total)}`;
+        bar(row.querySelector(".bar"), a.quota_used, a.quota_total);
+        return row;
+      }));
+    } catch (e) { $("err").textContent = e.message; }
+  }
+
+  function show() {
+    const has = !!getKey();
+    $("login").hidden = has;
+    $("app").hidden = !has;
+    if (has) load();
+  }
+
+  $("save").onclick = () => { try { localStorage.setItem("ud_key", $("key").value); } catch {} show(); };
+  $("add").onclick = async () => {
+    try { location.href = (await api("/oauth/start")).url; } catch (e) { $("err").textContent = e.message; }
+  };
+  show();
+</script>
+</body>
+</html>

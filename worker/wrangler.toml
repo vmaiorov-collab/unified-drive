@@ -1,0 +1,12 @@
+name = "unified-drive"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "unified-drive"
+database_id = "29647f0f-35a2-4cda-8f0b-e137c6cf4908"
+migrations_dir = "migrations"
